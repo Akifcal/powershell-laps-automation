@@ -1,38 +1,59 @@
-write-output "Name: create-new-user-for-laps.ps1"
-write-output "Description: create a new user for laps with temporary random password"
-write-output "Copyright (C) 2024  Ing. Akif Calhan"
-write-output ""
-write-output "This program is free software; you can redistribute it and/or modify it"
-write-output "under the terms of the GNU General Public License as published by the"
-write-output "Free Software Foundation; either version 3 of the write-output License, or (at"
-write-output "your option) any later version."
-write-output ""
-write-output "This program is distributed in the hope that it will be useful, but"
-write-output "WITHOUT ANY WARRANTY; without even the implied warranty of"
-write-output "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU write-output"
-write-output "General Public License for more details."
-write-output ""
-write-output "You should have received a copy of the GNU General Public License along"
-write-output "with this program; if not, see http://www.gnu.org/licenses"
-# Name of account 
+<#
+.SYNOPSIS
+    Create a new user for LAPS with a temporary random password.
+    
+.DESCRIPTION
+    This script checks if a specified local user exists. If not, it generates a 
+    complex random password and creates the user account configured for LAPS 
+    management (PasswordNeverExpires, UserMayNotChangePassword).
+
+.LICENSE
+    Copyright (C) 2024  Ing. Akif Calhan
+    This program is free software under the terms of the GNU General Public License v3.0.
+#>
+
+# Configuration
 $User = "lapsadmin"
-# passwordlength
-$size=30
+$Size = 30
+
 # Check if user already exists
 $existUser = Get-LocalUser -Name $User -ErrorAction SilentlyContinue
+
 if (!$existUser) {
-    # Create user account with temporary password & enabled
-    # Generate a random password
-    $password = (([char[]]"abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ1234567890!+@-""$%&/()=?{}" | get-random -Count $size) -join "") 
-    # convert pwd to securestring
-    $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
-    # create user
-    New-LocalUser -Name $User -Password $securePassword -AccountNeverExpires -UserMayNotChangePassword -PasswordNeverExpires
-    Enable-LocalUser -Name $User
-    # write to host
-    Write-Host "User '$User' created and enabled with temporary password."
-    exit 0  # Exit code 0 > success
+    try {
+        # 1. Generate a guaranteed complex password
+        $upper   = [char[]]"ABCDEFGHJKLMNPQRSTUVWXYZ" | Get-Random -Count 2
+        $lower   = [char[]]"abcdefghijkmnopqrstuvwxyz" | Get-Random -Count 2
+        $numbers = [char[]]"1234567890" | Get-Random -Count 2
+        $special = [char[]]"!+@-$%&/()=?{}" | Get-Random -Count 2
+        
+        # Fill the remaining characters randomly
+        $allChars = [char[]]"abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ1234567890!+@-$%&/()=?{}"
+        $filler   = $allChars | Get-Random -Count ($Size - 8)
+        
+        # Shuffle the characters so the order isn't predictable
+        $passwordChars = ($upper + $lower + $numbers + $special + $filler) | Get-Random -Count $Size
+        $password = $passwordChars -join ""
+        
+        # 2. Convert to SecureString
+        $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+        
+        # 3. Create User (created as enabled by default)
+        New-LocalUser -Name $User `
+                      -Password $securePassword `
+                      -AccountNeverExpires `
+                      -UserMayNotChangePassword `
+                      -PasswordNeverExpires `
+                      -ErrorAction Stop
+
+        Write-Host "User '$User' created successfully with temporary complex password."
+        exit 0  # Exit code 0 > success
+    }
+    catch {
+        Write-Error "Failed to create user '$User'. Reason: $($_.Exception.Message)"
+        exit 1  # Exit code 1 > failure during creation
+    }
 } else {
     Write-Host "User '$User' already exists. No remediation needed."
-    exit 1  # Exit code 1 > failure
+    exit 1  # Exit code 1 > failure (as requested, because user already exists)
 }
